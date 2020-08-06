@@ -1,3 +1,5 @@
+use thiserror::Error;
+
 macro_rules! error {
     ($code: expr, $($t:tt)*) => {
         ::tide::Error::from_str(($code as u16).try_into().unwrap(), format!($($t)*));
@@ -17,3 +19,14 @@ macro_rules! ensure {
         }
     };
 }
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("database error")]
+    DatabaseError(#[from] rusqlite::Error),
+
+    #[error("database pool error")]
+    R2D2Error(#[from] r2d2::Error),
+}
+
+pub type Result<T, E = Error> = std::result::Result<T, E>;
