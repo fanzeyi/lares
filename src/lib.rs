@@ -1,3 +1,6 @@
+use structopt::StructOpt;
+
+mod cli;
 #[macro_use]
 mod error;
 mod api;
@@ -12,6 +15,9 @@ pub async fn server() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-pub async fn cli() -> Result<(), std::io::Error> {
-    Ok(())
+pub async fn cli() -> anyhow::Result<()> {
+    let pool = crate::model::get_pool("lares.db".as_ref()).unwrap();
+    let state = crate::state::State::new(pool);
+
+    cli::Options::from_args().run(state).await
 }

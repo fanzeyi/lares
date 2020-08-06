@@ -40,18 +40,22 @@ impl<T: Model + Sized> ModelExt<T> for T {
 
 #[derive(Debug, Serialize, Dummy)]
 pub struct Group {
-    id: u32,
+    pub id: u32,
     #[dummy(faker = "Name()")]
-    title: String,
+    pub title: String,
 }
 
 impl Group {
+    pub fn new(title: String) -> Self {
+        Self { id: 0, title }
+    }
+
     pub fn create_table(conn: &Connection) -> Result<()> {
         conn.execute(
             r#"
         CREATE TABLE IF NOT EXISTS `group` (
             id INTEGER PRIMARY KEY,
-            title TEXT
+            title TEXT UNIQUE ON CONFLICT IGNORE
         )
         "#,
             NO_PARAMS,
@@ -64,6 +68,12 @@ impl Group {
             .prepare("INSERT INTO `group` (title) VALUES (?1)")?
             .insert(params![self.title])? as u32;
         Ok(self)
+    }
+
+    pub fn get_by_name(conn: &Connection, title: &str) -> Result<Self> {
+        conn.prepare("SELECT * FROM `group` WHERE `title` = ?1")?
+            .query_row(params![title], Self::from_row)
+            .map_err(Into::into)
     }
 }
 
@@ -158,6 +168,13 @@ pub struct FeedGroup {
 }
 
 impl FeedGroup {
+    pub fn new(group_id: u32, feed_id: u32) -> Self {
+        Self {
+            group_id,
+            feed_ids: vec![feed_id],
+        }
+    }
+
     pub fn serialize_json<S: serde::Serializer>(ids: &Vec<u32>, ser: S) -> Result<S::Ok, S::Error> {
         ser.serialize_str(
             &ids.iter()

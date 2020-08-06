@@ -22,10 +22,10 @@ macro_rules! ensure {
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("database error")]
+    #[error("Database error")]
     DatabaseError(#[from] rusqlite::Error),
 
-    #[error("database pool error")]
+    #[error("Database pool error")]
     R2D2Error(#[from] r2d2::Error),
 }
 
