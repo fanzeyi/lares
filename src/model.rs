@@ -94,15 +94,26 @@ impl Model for Group {
 
 #[derive(Debug, Serialize)]
 pub struct Feed {
-    id: u32,
-    title: String,
-    url: String,
-    site_url: String,
-    is_spark: bool,
-    last_updated_on_time: u32,
+    pub id: u32,
+    pub title: String,
+    pub url: String,
+    pub site_url: String,
+    pub is_spark: bool,
+    pub last_updated_on_time: u32,
 }
 
 impl Feed {
+    pub fn new(title: String, url: String, site_url: String) -> Self {
+        Feed {
+            id: 0,
+            title,
+            url,
+            site_url,
+            is_spark: true,
+            last_updated_on_time: crate::utils::unix_timestamp() as u32,
+        }
+    }
+
     pub fn create_table(conn: &Connection) -> Result<()> {
         conn.execute(
             r#"

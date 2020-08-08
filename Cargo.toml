@@ -20,11 +20,5 @@ rand = "0.7.3"
 structopt = "0.3.16"
 anyhow = "1.0.32"
 surf = "1.0.3"
-
-[[bin]]
-name = "server"
-path = "src/bin/server.rs"
-
-[[bin]]
-name = "cli"
-path = "src/bin/cli.rs"
+rss = "1.9.0"
+prettytable-rs = "0.8.0"
