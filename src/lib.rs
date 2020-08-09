@@ -1,3 +1,5 @@
+#![feature(iterator_fold_self)]
+
 use structopt::StructOpt;
 
 #[macro_use]
@@ -5,6 +7,7 @@ mod error;
 
 mod api;
 mod cli;
+mod crawler;
 mod model;
 mod state;
 mod utils;

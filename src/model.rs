@@ -1,6 +1,7 @@
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, Row, NO_PARAMS};
 use serde::Serialize;
+use std::collections::HashSet;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -171,6 +172,52 @@ impl Feed {
             .prepare("INSERT INTO `feed` (title, url, site_url, is_spark, last_updated) VALUES (?1, ?2, ?3, ?4, ?5)")?
             .insert(params![self.title, self.url, self.site_url, self.is_spark, self.last_updated_on_time])? as u32;
         Ok(self)
+    }
+
+    pub fn items(&self, conn: &Connection) -> Result<Vec<Item>> {
+        Ok(conn
+            .prepare("SELECT * FROM `item` WHERE `feed_id` = ?1 ORDER BY `id` DESC LIMIT 10")?
+            .query_map(params![self.id], Item::from_row)?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub async fn crawl(&self, state: crate::state::State) -> Result<()> {
+        let exist_urls = {
+            let conn = state.db.get()?;
+            self.items(&conn)?
+                .into_iter()
+                .map(|item| item.url)
+                .collect::<HashSet<String>>()
+        };
+        let content = surf::get(&self.url).await?.body_bytes().await?;
+        let channel = rss::Channel::read_from(&content[..])?;
+
+        let mut items = Vec::new();
+        for item in channel.items() {
+            if let Some(link) = item.link() {
+                if exist_urls.contains(link) {
+                    break;
+                }
+
+                items.push(Item {
+                    feed_id: self.id,
+                    title: item.title().unwrap_or_default().to_owned(),
+                    author: item.author().unwrap_or_default().to_owned(),
+                    html: item.content().unwrap_or_default().to_owned(),
+                    url: link.to_owned(),
+                    is_saved: true,
+                    is_read: false,
+                    ..Default::default()
+                });
+            }
+        }
+
+        {
+            let conn = state.db.get()?;
+            Item::insert_multi(&conn, items)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -357,17 +404,17 @@ impl Model for Favicon {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Item {
-    id: u32,
-    feed_id: u32,
-    title: String,
-    author: String,
-    html: String,
-    url: String,
-    is_saved: bool,
-    is_read: bool,
-    created_on_time: u32,
+    pub id: u32,
+    pub feed_id: u32,
+    pub title: String,
+    pub author: String,
+    pub html: String,
+    pub url: String,
+    pub is_saved: bool,
+    pub is_read: bool,
+    pub created_on_time: u32,
 }
 
 impl Item {
@@ -388,6 +435,29 @@ impl Item {
         "#,
             NO_PARAMS,
         )?;
+        Ok(())
+    }
+
+    pub fn insert_multi(conn: &Connection, items: Vec<Item>) -> Result<()> {
+        let mut stmt = conn.prepare(
+            r"
+        INSERT INTO `item` (feed_id, title, author, html, url, is_saved, is_read)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        )?;
+
+        for item in items.into_iter() {
+            stmt.execute(params![
+                item.feed_id,
+                item.title,
+                item.author,
+                item.html,
+                item.url,
+                item.is_saved,
+                item.is_read
+            ])?;
+        }
+
+        stmt.finalize()?;
         Ok(())
     }
 }

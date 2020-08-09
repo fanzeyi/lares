@@ -28,6 +28,15 @@ pub enum Error {
     #[error("Database pool error")]
     R2D2Error(#[from] r2d2::Error),
 
+    #[error("HTTP error")]
+    SurfError(#[from] surf::Exception),
+
+    #[error("IO error")]
+    IOError(#[from] std::io::Error),
+
+    #[error("RSS error")]
+    RSSError(#[from] rss::Error),
+
     #[error("{}", _0)]
     Message(String),
 }

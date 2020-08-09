@@ -1,6 +1,7 @@
 use crate::model::{Feed, FeedGroup, Group, ModelExt};
 use crate::state::State;
 use anyhow::{anyhow, Context, Result};
+use async_std::prelude::FutureExt;
 use prettytable::{cell, format, row, Table};
 use structopt::StructOpt;
 
@@ -13,6 +14,9 @@ pub enum FeedCommand {
         group: Option<String>,
     },
     Delete {
+        id: u32,
+    },
+    Crawl {
         id: u32,
     },
 }
@@ -64,11 +68,22 @@ impl FeedCommand {
         Ok(())
     }
 
+    async fn crawl(state: State, id: u32) -> Result<()> {
+        let feed = {
+            let conn = state.db.get()?;
+            Feed::get(&conn, id)?
+        };
+
+        feed.crawl(state).await?;
+        Ok(())
+    }
+
     async fn run(self, state: State) -> Result<()> {
         match self {
             Self::List => Self::list(state),
             Self::Add { url, group } => Self::add(state, url, group).await,
             Self::Delete { id } => Self::delete(state, id),
+            Self::Crawl { id } => Self::crawl(state, id).await,
         }
     }
 }
@@ -167,8 +182,11 @@ pub enum Options {
 
 impl Options {
     async fn server(state: State) -> Result<()> {
-        let app = crate::api::make_app(state);
-        app.listen("127.0.0.1:4000").await?;
+        let app = crate::api::make_app(state.clone());
+        let crwaler = crate::crawler::Crawler::new(state);
+        let (web, crawl) = app.listen("127.0.0.1:4000").join(crwaler.runloop()).await;
+        web.unwrap();
+        crawl.unwrap();
         Ok(())
     }
 
