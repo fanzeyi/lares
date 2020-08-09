@@ -1,23 +1,22 @@
-use fake::faker::filesystem::en::DirPath;
-use fake::faker::lorem::en::{Word, Words};
-use fake::faker::name::en::Name;
-use fake::{Dummy, Fake, Faker};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, Row, NO_PARAMS};
 use serde::Serialize;
 use std::path::Path;
+use std::rc::Rc;
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 
 pub trait Model: Sized {
     const TABLE: &'static str;
     fn from_row(row: &Row) -> rusqlite::Result<Self>;
     fn set_id(&mut self, id: u32);
+    fn get_id(&self) -> u32;
 }
 
 pub trait ModelExt<T> {
     fn get(conn: &Connection, id: u32) -> Result<T>;
     fn all(conn: &Connection) -> Result<Vec<T>>;
+    fn delete(self, conn: &Connection) -> Result<T>;
 }
 
 impl<T: Model + Sized> ModelExt<T> for T {
@@ -36,12 +35,19 @@ impl<T: Model + Sized> ModelExt<T> for T {
             .query_map(NO_PARAMS, Self::from_row)?
             .collect::<Result<_, _>>()?)
     }
+
+    fn delete(self, conn: &Connection) -> Result<T> {
+        conn.execute(
+            &format!("DELETE FROM `{}` WHERE `id` = ?1", Self::TABLE),
+            params![self.get_id()],
+        )?;
+        Ok(self)
+    }
 }
 
-#[derive(Debug, Serialize, Dummy)]
+#[derive(Debug, Serialize)]
 pub struct Group {
     pub id: u32,
-    #[dummy(faker = "Name()")]
     pub title: String,
 }
 
@@ -75,6 +81,31 @@ impl Group {
             .query_row(params![title], Self::from_row)
             .map_err(Into::into)
     }
+
+    pub fn get_feeds(&self, conn: &Connection) -> Result<Vec<Feed>> {
+        Ok(conn
+            .prepare(
+                r"
+        SELECT * 
+        FROM `feed` 
+        WHERE `id` IN (
+            SELECT `feed_id` FROM `feed_group` WHERE `group_id` = ?1
+        )",
+            )?
+            .query_map(params![self.id], Feed::from_row)?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn add_feed(&self, conn: &Connection, mut feed: Feed) -> Result<Feed> {
+        let feed_group = FeedGroup::new(self.id, feed.id);
+        feed_group.insert(&conn)?;
+        conn.execute(
+            "UPDATE `feed` SET `is_spark` = 0 WHERE `id` = ?1",
+            params![feed.id],
+        )?;
+        feed.is_spark = false;
+        Ok(feed)
+    }
 }
 
 impl Model for Group {
@@ -89,6 +120,10 @@ impl Model for Group {
 
     fn set_id(&mut self, id: u32) {
         self.id = id;
+    }
+
+    fn get_id(&self) -> u32 {
+        self.id
     }
 }
 
@@ -131,19 +166,6 @@ impl Feed {
         Ok(())
     }
 
-    pub fn fake() -> Self {
-        let domain: String = Word().fake();
-
-        Feed {
-            id: 0,
-            title: Words(10..15).fake::<Vec<String>>().join(" "),
-            url: format!("http://www.{}.com{}", domain, DirPath().fake::<String>()),
-            site_url: format!("http://www.{}.com/", domain),
-            is_spark: true,
-            last_updated_on_time: 1596610160,
-        }
-    }
-
     pub fn insert(mut self, conn: &Connection) -> Result<Self> {
         self.id = conn
             .prepare("INSERT INTO `feed` (title, url, site_url, is_spark, last_updated) VALUES (?1, ?2, ?3, ?4, ?5)")?
@@ -168,6 +190,19 @@ impl Model for Feed {
 
     fn set_id(&mut self, id: u32) {
         self.id = id;
+    }
+
+    fn get_id(&self) -> u32 {
+        self.id
+    }
+}
+
+impl std::fmt::Display for Feed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "ID: {}", self.id)?;
+        writeln!(f, "Name: {}", self.title)?;
+        writeln!(f, "Feed URL: {}", self.url)?;
+        writeln!(f, "Site URL: {}", self.site_url)
     }
 }
 
@@ -210,13 +245,7 @@ impl FeedGroup {
         Ok(())
     }
 
-    pub fn all(conn: &Connection) -> Result<Vec<Self>> {
-        let mut indices = conn
-            .prepare("SELECT group_id, feed_id FROM `feed_group`")?
-            .query_map(NO_PARAMS, |row| {
-                Ok((row.get::<_, u32>(0)?, row.get::<_, u32>(1)?))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
+    fn fold_group(mut indices: Vec<(u32, u32)>) -> Result<Vec<Self>> {
         indices.sort_by(|lhs, rhs| lhs.0.cmp(&rhs.0));
         Ok(indices
             .into_iter()
@@ -233,6 +262,32 @@ impl FeedGroup {
             .collect())
     }
 
+    pub fn all(conn: &Connection) -> Result<Vec<Self>> {
+        let indices = conn
+            .prepare("SELECT group_id, feed_id FROM `feed_group`")?
+            .query_map(NO_PARAMS, |row| {
+                Ok((row.get::<_, u32>(0)?, row.get::<_, u32>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Self::fold_group(indices)
+    }
+
+    pub fn get_by_group(conn: &Connection, group_id: u32) -> Result<Self> {
+        let indices = conn
+            .prepare("SELECT group_id, feed_id FROM `feed_group` WHERE `group_id` = ?1")?
+            .query_map(params![group_id], |row| {
+                Ok((row.get::<_, u32>(0)?, row.get::<_, u32>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let result = Self::fold_group(indices)?;
+        result
+            .into_iter()
+            .next()
+            .ok_or_else(|| Error::message("unable to find group".to_owned()))
+    }
+
     pub fn insert(self, conn: &Connection) -> Result<()> {
         let mut insert =
             conn.prepare("INSERT INTO `feed_group` (group_id, feed_id) VALUES (?1, ?2)")?;
@@ -241,6 +296,24 @@ impl FeedGroup {
             let _ = insert.execute(params![self.group_id, feed_id]);
         }
         Ok(())
+    }
+
+    pub fn delete(mut self, conn: &Connection) -> Result<Self> {
+        let rarray = Rc::new(
+            self.feed_ids
+                .iter()
+                .map(|&s| s as i64)
+                .map(rusqlite::types::Value::from)
+                .collect::<Vec<_>>(),
+        );
+        conn.prepare("UPDATE `feed` SET `is_spark` = 1 WHERE `id` IN rarray(?) ")?
+            .execute(&[&rarray])?;
+        conn.execute(
+            "DELETE FROM `feed_group` WHERE `group_id` = ?1",
+            params![self.group_id],
+        )?;
+        self.feed_ids.clear();
+        Ok(self)
     }
 }
 
@@ -277,6 +350,10 @@ impl Model for Favicon {
 
     fn set_id(&mut self, id: u32) {
         self.id = id;
+    }
+
+    fn get_id(&self) -> u32 {
+        self.id
     }
 }
 
@@ -335,10 +412,17 @@ impl Model for Item {
     fn set_id(&mut self, id: u32) {
         self.id = id;
     }
+
+    fn get_id(&self) -> u32 {
+        self.id
+    }
 }
 
 pub fn get_pool(path: &Path) -> Result<r2d2::Pool<SqliteConnectionManager>> {
-    let manager = SqliteConnectionManager::file(path);
+    let manager = SqliteConnectionManager::file(path).with_init(|c| {
+        rusqlite::vtab::array::load_module(&c)?;
+        Ok(())
+    });
     let pool = r2d2::Pool::new(manager)?;
 
     {
@@ -354,18 +438,78 @@ pub fn get_pool(path: &Path) -> Result<r2d2::Pool<SqliteConnectionManager>> {
     Ok(pool)
 }
 
-#[test]
-fn test_fill_group_fixture() {
-    let pool = get_pool("lares.db".as_ref()).unwrap();
-    let conn = pool.get().unwrap();
-    let group = Faker.fake::<Group>();
-    group.insert(&conn).unwrap();
-}
+#[cfg(test)]
+mod test {
+    use super::*;
 
-#[test]
-fn test_fill_feed_fixture() {
-    let pool = get_pool("lares.db".as_ref()).unwrap();
-    let conn = pool.get().unwrap();
-    let feed = Feed::fake();
-    feed.insert(&conn).unwrap();
+    fn make_test_feed(i: u32) -> Feed {
+        Feed::new(
+            format!("feed {}", i),
+            format!("http://{}.example.com/feed", i),
+            format!("http://{}.example.com/", i),
+        )
+    }
+
+    fn make_test_group(i: u32) -> Group {
+        Group::new(format!("group {}", i))
+    }
+
+    #[test]
+    fn test_group() -> Result<()> {
+        let conn = Connection::open_in_memory().unwrap();
+        Group::create_table(&conn).unwrap();
+        Feed::create_table(&conn).unwrap();
+        FeedGroup::create_table(&conn).unwrap();
+
+        // prepare
+        let group = make_test_group(1).insert(&conn).unwrap();
+        let feed1 = make_test_feed(1).insert(&conn).unwrap();
+        let feed2 = make_test_feed(2).insert(&conn).unwrap();
+        assert!(feed2.is_spark);
+
+        let _feed1 = group.add_feed(&conn, feed1).unwrap();
+        let feed2 = group.add_feed(&conn, feed2).unwrap();
+
+        let result = Group::get_by_name(&conn, "group 1").unwrap();
+        assert_eq!(result.id, group.id);
+
+        let feeds = result.get_feeds(&conn).unwrap();
+        assert_eq!(feeds.len(), 2);
+        let feed2_new = feeds
+            .into_iter()
+            .filter(|x| x.id == feed2.id)
+            .next()
+            .unwrap();
+        assert!(!feed2_new.is_spark);
+        Ok(())
+    }
+
+    #[test]
+    fn test_feed_group() {
+        let conn = Connection::open_in_memory().unwrap();
+        rusqlite::vtab::array::load_module(&conn).unwrap();
+        Group::create_table(&conn).unwrap();
+        Feed::create_table(&conn).unwrap();
+        FeedGroup::create_table(&conn).unwrap();
+
+        for group_id in 1..3 {
+            let group = make_test_group(group_id).insert(&conn).unwrap();
+            for feed_id in 1..(group_id + 5) {
+                let feed = make_test_feed(feed_id).insert(&conn).unwrap();
+                group.add_feed(&conn, feed).unwrap();
+            }
+        }
+
+        let group = FeedGroup::get_by_group(&conn, 1).unwrap();
+        assert_eq!(group.feed_ids.len(), 5);
+
+        let groups = FeedGroup::all(&conn).unwrap();
+        for group in groups.iter() {
+            assert_eq!(group.feed_ids.len() as u32, 5 + group.group_id - 1);
+        }
+
+        let first = groups.into_iter().next().unwrap().delete(&conn).unwrap();
+        let feed = Feed::get(&conn, first.feed_ids[0]).unwrap();
+        assert!(feed.is_spark);
+    }
 }

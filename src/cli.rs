@@ -1,14 +1,20 @@
 use crate::model::{Feed, FeedGroup, Group, ModelExt};
 use crate::state::State;
 use anyhow::{anyhow, Context, Result};
-use prettytable::{cell, format, row, Cell, Row, Table};
+use prettytable::{cell, format, row, Table};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 pub enum FeedCommand {
     List,
-    Add { url: String },
-    Delete { id: u32 },
+    Add {
+        url: String,
+        #[structopt(short = "g", long = "group")]
+        group: Option<String>,
+    },
+    Delete {
+        id: u32,
+    },
 }
 
 impl FeedCommand {
@@ -29,25 +35,39 @@ impl FeedCommand {
         Ok(())
     }
 
-    async fn add(state: State, url: String) -> Result<()> {
+    async fn add(state: State, url: String, group: Option<String>) -> Result<()> {
         let bytes = surf::get(&url).await.unwrap().body_bytes().await.unwrap();
         let channel = rss::Channel::read_from(&bytes[..])?;
         let feed = Feed::new(channel.title().to_owned(), url, channel.link().to_owned());
-        {
+        let feed = {
             let conn = state.db.get()?;
-            feed.insert(&conn)?;
+            feed.insert(&conn)?
+        };
+        println!("Feed added!\n{}", feed);
+
+        if let Some(group) = group {
+            let conn = state.db.get()?;
+            let group = Group::get_by_name(&conn, &group)
+                .with_context(|| anyhow!("Unable to find group '{}'", group))?;
+            group.add_feed(&conn, feed)?;
+
+            println!("Feed added to group {}", group.title);
         }
         Ok(())
     }
 
     fn delete(state: State, id: u32) -> Result<()> {
+        let conn = state.db.get()?;
+        let feed = Feed::get(&conn, id)?;
+        let feed = feed.delete(&conn)?;
+        println!("Feed deleted!\n{}", feed);
         Ok(())
     }
 
     async fn run(self, state: State) -> Result<()> {
         match self {
             Self::List => Self::list(state),
-            Self::Add { url } => Self::add(state, url).await,
+            Self::Add { url, group } => Self::add(state, url, group).await,
             Self::Delete { id } => Self::delete(state, id),
         }
     }
@@ -59,6 +79,7 @@ pub enum GroupCommand {
     Add { name: String },
     AddFeed { id: u32, group: String },
     Delete { name: String },
+    Show { name: String },
 }
 
 impl GroupCommand {
@@ -93,14 +114,35 @@ impl GroupCommand {
         let conn = state.db.get()?;
         let group = Group::get_by_name(&conn, &group)
             .with_context(|| anyhow!("Unable to find group '{}'", group))?;
-        let _ = Feed::get(&conn, feed_id)
+        let feed = Feed::get(&conn, feed_id)
             .with_context(|| anyhow!("Unable to find feed with id = {}", feed_id))?;
-        let feed_group = FeedGroup::new(group.id, feed_id);
-        feed_group.insert(&conn)?;
+        group.add_feed(&conn, feed)?;
         Ok(())
     }
 
-    fn delete(state: State, name: String) -> Result<()> {
+    fn delete(state: State, group: String) -> Result<()> {
+        let conn = state.db.get()?;
+        let group = Group::get_by_name(&conn, &group)
+            .with_context(|| anyhow!("Unable to find group '{}'", group))?;
+        let feed_groups = FeedGroup::get_by_group(&conn, group.id)?;
+        if feed_groups.feed_ids.len() != 0 {
+            println!("Warning: there are still feeds belong to this group");
+        }
+        feed_groups.delete(&conn)?;
+        let group = group.delete(&conn)?;
+        println!("Group {} deleted", group.title);
+        Ok(())
+    }
+
+    fn show(state: State, group: String) -> Result<()> {
+        let conn = state.db.get()?;
+        let group = Group::get_by_name(&conn, &group)
+            .with_context(|| anyhow!("Unable to find group '{}'", group))?;
+        let feeds = group.get_feeds(&conn)?;
+        println!("Group {}:\n", group.title);
+        for feed in feeds.iter() {
+            println!("{}", feed);
+        }
         Ok(())
     }
 
@@ -110,6 +152,7 @@ impl GroupCommand {
             Self::Add { name } => Self::add(state, name),
             Self::AddFeed { id, group } => Self::add_feed(state, id, group),
             Self::Delete { name } => Self::delete(state, name),
+            Self::Show { name } => Self::show(state, name),
         }
     }
 }

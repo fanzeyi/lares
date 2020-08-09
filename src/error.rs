@@ -27,6 +27,15 @@ pub enum Error {
 
     #[error("Database pool error")]
     R2D2Error(#[from] r2d2::Error),
+
+    #[error("{}", _0)]
+    Message(String),
+}
+
+impl Error {
+    pub fn message(msg: String) -> Self {
+        Error::Message(msg)
+    }
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
