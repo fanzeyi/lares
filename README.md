@@ -1,6 +1,6 @@
 # Lares: Minimal Fever API Implementation
 
-[![Build Status](https://github.com/fanzeyi/lares/workflows/.github/workflows/buildtest.yml/badge.svg)](https://github.com/fanzeyi/lares/actions?query=workflow%3A%22Build+%26+Test%22) [![Crates.io](https://img.shields.io/crates/v/lares)](https://crates.io/crates/lares)
+[![Build Status](https://github.com/fanzeyi/lares/workflows/Build%20&%20Test/badge.svg)](https://github.com/fanzeyi/lares/actions?query=workflow%3A%22Build+%26+Test%22) [![Crates.io](https://img.shields.io/crates/v/lares)](https://crates.io/crates/lares)
 
 **Lares** is a minimal [Fever API](https://feedafever.com/api) implementation
 written in Rust. It aims to provide a RSS reader backend with zero setup. It
