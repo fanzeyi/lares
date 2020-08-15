@@ -118,7 +118,7 @@ impl Group {
         Ok(feed)
     }
 
-    pub fn read(&self, before: Option<u32>) {}
+    pub fn read(&self, _before: Option<u32>) {}
 }
 
 impl Model for Group {
@@ -255,7 +255,7 @@ impl Feed {
         Ok(self)
     }
 
-    pub fn read(&self, before: Option<u32>) {}
+    pub fn read(&self, _before: Option<u32>) {}
 }
 
 impl Model for Feed {

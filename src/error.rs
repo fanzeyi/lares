@@ -12,7 +12,7 @@ macro_rules! bail {
     };
 }
 
-macro_rules! ensure {
+macro_rules! _ensure {
     ($cond: expr, $code: expr, $($t:tt)*) => {
         if !($cond) {
             bail!($code, $($t)*);
