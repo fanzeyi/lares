@@ -1,10 +1,17 @@
 [package]
 name = "lares"
 version = "0.1.0"
-authors = ["Zeyi Fan <fanzeyi1994@gmail.com>"]
+authors = ["Zeyi Fan <cargo@zeyi.fan>"]
 edition = "2018"
+description = "Simple RSS Reader Service (Fever API backend)"
+license = "MIT"
+homepage = "https://github.com/fanzeyi/lares"
+readme = "README.md"
+keywords = ["rss", "rssreader", "fever"]
+categories = []  # :(
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[badges]
+maintenance = { status = "actively-developed" }
 
 [dependencies]
 rusqlite = { version = "0.23", features = ["array", "bundled", "chrono"] }
@@ -23,3 +30,4 @@ rss = "1.9.0"
 prettytable-rs = "0.8.0"
 futures = "0.3.5"
 chrono = { version = "0.4.13" }
+

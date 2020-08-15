@@ -186,7 +186,7 @@ impl GroupCommand {
 }
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "lares", about = "Minified RSS service")]
+#[structopt(name = "lares", about = "Minimal RSS service")]
 pub enum Options {
     /// Manages feeds
     Feed(FeedCommand),
