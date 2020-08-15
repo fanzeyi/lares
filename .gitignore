@@ -1,3 +1,5 @@
 /target
 
 *.db
+
+setup.sh

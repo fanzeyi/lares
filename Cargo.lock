@@ -1154,6 +1154,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-std",
+ "chrono",
  "futures 0.3.5",
  "prettytable-rs",
  "r2d2",
@@ -1643,6 +1644,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "45d0fd62e1df63d254714e6cb40d0a0e82e7a1623e7a27f679d851af092ae58b"
 dependencies = [
  "bitflags",
+ "chrono",
  "fallible-iterator",
  "fallible-streaming-iterator",
  "lazy_static",

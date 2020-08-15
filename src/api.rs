@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use tide::{
     log::{self, LevelFilter},
     Request,
@@ -122,8 +123,7 @@ fn handle_write_form(
             };
 
             match form.r#as {
-                // TODO: return error
-                Action::Saved | Action::Unsaved => handle_ok(request),
+                Action::Saved | Action::Unsaved => bail!(400, "invalid as"),
                 Action::Read => {
                     feed.read(form.before);
                     handle_ok(request)
@@ -133,10 +133,10 @@ fn handle_write_form(
         MarkType::Group => {
             if form.id == 0 {
                 // TODO: Kindling
-                todo!()
+                bail!(400, "unimplemented");
             } else if form.id == -1 {
                 // TODO: Sparks
-                todo!()
+                bail!(400, "unimplemented");
             };
 
             let group = {
@@ -145,8 +145,7 @@ fn handle_write_form(
             };
 
             match form.r#as {
-                // TODO: return error
-                Action::Saved | Action::Unsaved => handle_ok(request),
+                Action::Saved | Action::Unsaved => bail!(400, "invalid as"),
                 Action::Read => {
                     group.read(form.before);
                     handle_ok(request)

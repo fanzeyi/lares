@@ -1,6 +1,7 @@
+use chrono::{DateTime, Utc};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, Row, NO_PARAMS};
-use serde::{ser::SerializeSeq, Serialize};
+use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
 use std::rc::Rc;
@@ -146,7 +147,8 @@ pub struct Feed {
     pub url: String,
     pub site_url: String,
     pub is_spark: bool,
-    pub last_updated_on_time: u32,
+    #[serde(serialize_with = "crate::utils::serialize_timestamp")]
+    pub last_updated_on_time: DateTime<Utc>,
 }
 
 impl Feed {
@@ -157,7 +159,7 @@ impl Feed {
             url,
             site_url,
             is_spark: true,
-            last_updated_on_time: crate::utils::unix_timestamp() as u32,
+            last_updated_on_time: Utc::now(),
         }
     }
 
@@ -192,7 +194,7 @@ impl Feed {
             .collect::<Result<Vec<_>, _>>()?)
     }
 
-    pub async fn crawl(&self, state: crate::state::State) -> Result<()> {
+    pub async fn crawl(mut self, state: crate::state::State) -> Result<Self> {
         let exist_urls = {
             let conn = state.db.get()?;
             self.items(&conn)?
@@ -210,25 +212,47 @@ impl Feed {
                     break;
                 }
 
+                let created = if let Some(pub_date) = item.pub_date() {
+                    if let Ok(created) = DateTime::parse_from_rfc2822(pub_date) {
+                        created.with_timezone(&Utc)
+                    } else {
+                        continue;
+                    }
+                } else {
+                    continue;
+                };
+
                 items.push(Item {
+                    id: 0,
                     feed_id: self.id,
                     title: item.title().unwrap_or_default().to_owned(),
                     author: item.author().unwrap_or_default().to_owned(),
-                    html: item.content().unwrap_or_default().to_owned(),
+                    html: item
+                        .content()
+                        .and_then(|s| if s.is_empty() { None } else { Some(s) })
+                        .or_else(|| item.description())
+                        .unwrap_or_default()
+                        .to_owned(),
                     url: link.to_owned(),
                     is_saved: false,
                     is_read: false,
-                    ..Default::default()
+                    created_on_time: created,
                 });
             }
         }
 
+        let now = Utc::now();
         {
             let conn = state.db.get()?;
             Item::insert_multi(&conn, items)?;
+            conn.execute(
+                "UPDATE `feed` SET `last_updated` = ?1 WHERE id = ?2",
+                params![now, self.id],
+            )?;
         }
+        self.last_updated_on_time = now;
 
-        Ok(())
+        Ok(self)
     }
 
     pub fn read(&self, before: Option<u32>) {}
@@ -412,7 +436,7 @@ impl Model for Favicon {
     }
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct Item {
     pub id: u32,
     pub feed_id: u32,
@@ -422,7 +446,8 @@ pub struct Item {
     pub url: String,
     pub is_saved: bool,
     pub is_read: bool,
-    pub created_on_time: Option<u32>,
+    #[serde(serialize_with = "crate::utils::serialize_timestamp")]
+    pub created_on_time: DateTime<Utc>,
 }
 
 impl Item {
@@ -449,8 +474,8 @@ impl Item {
     pub fn insert_multi(conn: &Connection, items: Vec<Item>) -> Result<()> {
         let mut stmt = conn.prepare(
             r"
-        INSERT INTO `item` (feed_id, title, author, html, url, is_saved, is_read)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        INSERT INTO `item` (feed_id, title, author, html, url, is_saved, is_read, created)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         )?;
 
         for item in items.into_iter() {
@@ -461,7 +486,8 @@ impl Item {
                 item.html,
                 item.url,
                 item.is_saved,
-                item.is_read
+                item.is_read,
+                item.created_on_time,
             ])?;
         }
 
