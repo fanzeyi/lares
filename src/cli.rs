@@ -7,18 +7,21 @@ use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 pub enum FeedCommand {
+    /// Lists all feeds
     List,
+
+    /// Adds a new feed
     Add {
         url: String,
         #[structopt(short = "g", long = "group")]
         group: Option<String>,
     },
-    Delete {
-        id: u32,
-    },
-    Crawl {
-        id: u32,
-    },
+
+    /// Deletes a feed
+    Delete { id: u32 },
+
+    /// Crawls a feed manually
+    Crawl { id: u32 },
 }
 
 impl FeedCommand {
@@ -65,6 +68,7 @@ impl FeedCommand {
         let feed = Feed::get(&conn, id)?;
         let feed = feed.delete(&conn)?;
         println!("Feed deleted!\n{}", feed);
+        // TODO: delete related items
         Ok(())
     }
 
@@ -90,10 +94,19 @@ impl FeedCommand {
 
 #[derive(Debug, StructOpt)]
 pub enum GroupCommand {
+    /// Lists all groups
     List,
+
+    /// Adds a group
     Add { name: String },
+
+    /// Adds a feed to group
     AddFeed { id: u32, group: String },
+
+    /// Deletes a group
     Delete { name: String },
+
+    /// Prints the content of a group
     Show { name: String },
 }
 
@@ -175,17 +188,28 @@ impl GroupCommand {
 #[derive(Debug, StructOpt)]
 #[structopt(name = "lares", about = "Minified RSS service")]
 pub enum Options {
+    /// Manages feeds
     Feed(FeedCommand),
+    /// Manages group
     Group(GroupCommand),
-    Server { port: Option<u32> },
+    /// Starts web server
+    Server {
+        #[structopt(short = "H", long = "host", default_value = "127.0.0.1")]
+        /// Specifies host of server
+        host: String,
+
+        #[structopt(short = "p", long = "port", default_value = "4000")]
+        /// Specifies port of server
+        port: u32,
+    },
 }
 
 impl Options {
-    async fn server(state: State, port: Option<u32>) -> Result<()> {
+    async fn server(state: State, host: String, port: u32) -> Result<()> {
         let app = crate::api::make_app(state.clone());
         let crwaler = crate::crawler::Crawler::new(state);
         let (web, crawl) = app
-            .listen(format!("127.0.0.1:{}", port.unwrap_or(4000)))
+            .listen(format!("{}:{}", host, port))
             .join(crwaler.runloop())
             .await;
         web.unwrap();
@@ -197,7 +221,7 @@ impl Options {
         match self {
             Options::Feed(cmd) => cmd.run(state).await,
             Options::Group(cmd) => cmd.run(state).await,
-            Options::Server { port } => Self::server(state, port).await,
+            Options::Server { host, port } => Self::server(state, host, port).await,
         }
     }
 }
