@@ -177,14 +177,17 @@ impl GroupCommand {
 pub enum Options {
     Feed(FeedCommand),
     Group(GroupCommand),
-    Server,
+    Server { port: Option<u32> },
 }
 
 impl Options {
-    async fn server(state: State) -> Result<()> {
+    async fn server(state: State, port: Option<u32>) -> Result<()> {
         let app = crate::api::make_app(state.clone());
         let crwaler = crate::crawler::Crawler::new(state);
-        let (web, crawl) = app.listen("127.0.0.1:4000").join(crwaler.runloop()).await;
+        let (web, crawl) = app
+            .listen(format!("127.0.0.1:{}", port.unwrap_or(4000)))
+            .join(crwaler.runloop())
+            .await;
         web.unwrap();
         crawl.unwrap();
         Ok(())
@@ -194,7 +197,7 @@ impl Options {
         match self {
             Options::Feed(cmd) => cmd.run(state).await,
             Options::Group(cmd) => cmd.run(state).await,
-            Options::Server => Self::server(state).await,
+            Options::Server { port } => Self::server(state, port).await,
         }
     }
 }

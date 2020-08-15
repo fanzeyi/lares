@@ -1,6 +1,6 @@
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, Row, NO_PARAMS};
-use serde::Serialize;
+use serde::{ser::SerializeSeq, Serialize};
 use std::collections::HashSet;
 use std::path::Path;
 use std::rc::Rc;
@@ -18,6 +18,7 @@ pub trait ModelExt<T> {
     fn get(conn: &Connection, id: u32) -> Result<T>;
     fn all(conn: &Connection) -> Result<Vec<T>>;
     fn delete(self, conn: &Connection) -> Result<T>;
+    fn count(conn: &Connection) -> Result<u32>;
 }
 
 impl<T: Model + Sized> ModelExt<T> for T {
@@ -43,6 +44,14 @@ impl<T: Model + Sized> ModelExt<T> for T {
             params![self.get_id()],
         )?;
         Ok(self)
+    }
+
+    fn count(conn: &Connection) -> Result<u32> {
+        Ok(conn.query_row(
+            &format!("SELECT COUNT(*) FROM {}", Self::TABLE),
+            NO_PARAMS,
+            |row| row.get::<_, u32>(0),
+        )?)
     }
 }
 
@@ -107,6 +116,8 @@ impl Group {
         feed.is_spark = false;
         Ok(feed)
     }
+
+    pub fn read(&self, before: Option<u32>) {}
 }
 
 impl Model for Group {
@@ -205,7 +216,7 @@ impl Feed {
                     author: item.author().unwrap_or_default().to_owned(),
                     html: item.content().unwrap_or_default().to_owned(),
                     url: link.to_owned(),
-                    is_saved: true,
+                    is_saved: false,
                     is_read: false,
                     ..Default::default()
                 });
@@ -219,6 +230,8 @@ impl Feed {
 
         Ok(())
     }
+
+    pub fn read(&self, before: Option<u32>) {}
 }
 
 impl Model for Feed {
@@ -269,12 +282,7 @@ impl FeedGroup {
     }
 
     pub fn serialize_json<S: serde::Serializer>(ids: &Vec<u32>, ser: S) -> Result<S::Ok, S::Error> {
-        ser.serialize_str(
-            &ids.iter()
-                .map(|id| id.to_string())
-                .collect::<Vec<_>>()
-                .join(","),
-        )
+        ser.serialize_str(&crate::utils::comma_join_vec(ids))
     }
 
     pub fn create_table(conn: &Connection) -> Result<()> {
@@ -404,7 +412,7 @@ impl Model for Favicon {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct Item {
     pub id: u32,
     pub feed_id: u32,
@@ -414,7 +422,7 @@ pub struct Item {
     pub url: String,
     pub is_saved: bool,
     pub is_read: bool,
-    pub created_on_time: u32,
+    pub created_on_time: Option<u32>,
 }
 
 impl Item {
@@ -459,6 +467,62 @@ impl Item {
 
         stmt.finalize()?;
         Ok(())
+    }
+
+    pub fn select(conn: &Connection, offset: Option<u32>, desc: bool) -> Result<Vec<Self>> {
+        let mut stmt = "SELECT * FROM `item` ORDER BY `id` ".to_owned();
+        if desc {
+            stmt.push_str("DESC");
+        }
+        stmt.push_str(" LIMIT 50");
+        if let Some(offset) = offset {
+            stmt.push_str(&format!(" OFFSET {}", offset));
+        }
+        Ok(conn
+            .prepare(dbg!(&stmt))?
+            .query_map(NO_PARAMS, Self::from_row)?
+            .collect::<Result<_, _>>()?)
+    }
+
+    pub fn unread(conn: &Connection) -> Result<Vec<u32>> {
+        Ok(conn
+            .prepare("SELECT id FROM `item` WHERE `is_read` = 0")?
+            .query_map(NO_PARAMS, |row| row.get(0))?
+            .collect::<Result<_, _>>()?)
+    }
+
+    pub fn saved(conn: &Connection) -> Result<Vec<u32>> {
+        Ok(conn
+            .prepare("SELECT id FROM `item` WHERE `is_saved` = 1")?
+            .query_map(NO_PARAMS, |row| row.get(0))?
+            .collect::<Result<_, _>>()?)
+    }
+
+    pub fn read(mut self, conn: &Connection) -> Result<Self> {
+        conn.execute(
+            "UPDATE `item` SET `is_read` = 1 WHERE `id` = ?1",
+            params![self.id],
+        )?;
+        self.is_read = true;
+        Ok(self)
+    }
+
+    pub fn save(mut self, conn: &Connection) -> Result<Self> {
+        conn.execute(
+            "UPDATE `item` SET `is_saved` = 1 WHERE `id` = ?1",
+            params![self.id],
+        )?;
+        self.is_saved = true;
+        Ok(self)
+    }
+
+    pub fn unsave(mut self, conn: &Connection) -> Result<Self> {
+        conn.execute(
+            "UPDATE `item` SET `is_saved` = 0 WHERE `id` = ?1",
+            params![self.id],
+        )?;
+        self.is_saved = false;
+        Ok(self)
     }
 }
 
@@ -578,8 +642,11 @@ mod test {
             assert_eq!(group.feed_ids.len() as u32, 5 + group.group_id - 1);
         }
 
-        let first = groups.into_iter().next().unwrap().delete(&conn).unwrap();
-        let feed = Feed::get(&conn, first.feed_ids[0]).unwrap();
+        let first = groups.into_iter().next().unwrap();
+        let feed_id = first.feed_ids[0];
+        first.delete(&conn).unwrap();
+
+        let feed = Feed::get(&conn, feed_id).unwrap();
         assert!(feed.is_spark);
     }
 }
