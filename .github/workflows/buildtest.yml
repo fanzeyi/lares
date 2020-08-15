@@ -1,0 +1,39 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/registry
+          key: cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-
+      - name: Cache Cargo index
+        uses: actions/cache@v1
+        with:
+          path: ~/.cargo/git
+          key: cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-index-
+      - name: Cache Cargo target
+        uses: actions/cache@v2
+        with:
+          path: target
+          key: target-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            target-
+      - name: "Build"
+        run: cargo build
+
+      - name: "Test"
+        run: cargo test
