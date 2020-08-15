@@ -2,6 +2,8 @@ use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashMap;
 use std::convert::TryInto;
+use std::future::Future;
+use std::pin::Pin;
 use tide::{
     log::{self, LevelFilter},
     Request,
@@ -69,7 +71,7 @@ fn handle_unread_item_ids(
         Item::unread(&conn)?
     };
     Ok(json!({
-        "api_version": "2",
+        "api_version": API_VERSION,
         "auth": 1,
         "unread_item_ids": comma_join_vec(item_ids),
     }))
@@ -84,7 +86,7 @@ fn handle_saved_item_ids(
         Item::saved(&conn)?
     };
     Ok(json!({
-        "api_version": "2",
+        "api_version": API_VERSION,
         "auth": 1,
         "unread_item_ids": comma_join_vec(item_ids),
     }))
@@ -157,7 +159,7 @@ fn handle_write_form(
 
 fn handle_ok(_request: Request<State>) -> Result<impl Into<tide::Response>, tide::Error> {
     Ok(json!({
-        "api_version": "2",
+        "api_version": API_VERSION,
         "auth": 1,
     }))
 }
@@ -184,15 +186,48 @@ struct WriteForm {
     r#as: Action,
     id: i32,
     before: Option<u32>,
+}
 
+#[derive(Deserialize, Debug)]
+struct Auth {
     api_key: String,
+}
+
+fn auth(
+    mut request: Request<State>,
+    next: tide::Next<'_, State>,
+) -> Pin<Box<dyn Future<Output = tide::Result> + Send + '_>> {
+    Box::pin(async move {
+        if let Some(credential) = request.state().credential.clone() {
+            if let Ok(auth) = request.body_form::<Auth>().await {
+                if auth.api_key == credential {
+                    Ok(next.run(request).await)
+                } else {
+                    Ok(json!({
+                        "api_version": API_VERSION,
+                        "auth": 0,
+                    })
+                    .into())
+                }
+            } else {
+                Ok(json!({
+                    "api_version": API_VERSION,
+                    "auth": 0,
+                })
+                .into())
+            }
+        } else {
+            Ok(next.run(request).await)
+        }
+    })
 }
 
 pub fn make_app(state: State) -> tide::Server<State> {
     tide::log::with_level(LevelFilter::Info);
 
     let mut app = tide::with_state(state);
-    app.at("/")
+    app.with(auth)
+        .at("/")
         .get(|mut request: Request<State>| async move {
             let _ = request.body_string().await;
             Ok("")

@@ -1156,6 +1156,7 @@ dependencies = [
  "async-std",
  "chrono",
  "futures 0.3.5",
+ "md-5",
  "prettytable-rs",
  "r2d2",
  "r2d2_sqlite",
@@ -1259,6 +1260,17 @@ name = "maybe-uninit"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
+
+[[package]]
+name = "md-5"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b5a279bb9607f9f53c22d496eade00d138d1bdcccd07d74650387cf94942a15"
+dependencies = [
+ "block-buffer",
+ "digest",
+ "opaque-debug 0.3.0",
+]
 
 [[package]]
 name = "memchr"

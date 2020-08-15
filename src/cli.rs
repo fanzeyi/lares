@@ -3,6 +3,7 @@ use crate::state::State;
 use anyhow::{anyhow, Context, Result};
 use async_std::prelude::FutureExt;
 use prettytable::{cell, format, row, Table};
+use std::path::PathBuf;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -186,8 +187,7 @@ impl GroupCommand {
 }
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "lares", about = "Minimal RSS service")]
-pub enum Options {
+pub enum SubCommand {
     /// Manages feeds
     Feed(FeedCommand),
     /// Manages group
@@ -201,11 +201,41 @@ pub enum Options {
         #[structopt(short = "p", long = "port", default_value = "4000")]
         /// Specifies port of server
         port: u32,
+
+        #[structopt(short = "u", long = "username", requires = "password")]
+        /// Specifies username used in authentication
+        username: Option<String>,
+
+        #[structopt(short = "P", long = "password", requires = "username")]
+        /// Specifies password used in authentication
+        password: Option<String>,
     },
 }
 
+#[derive(StructOpt, Debug)]
+#[structopt(name = "lares", about = "Minimal RSS service")]
+pub struct Options {
+    #[structopt(short = "d", long = "database", default_value = "lares.db")]
+    database: PathBuf,
+
+    #[structopt(subcommand)]
+    command: SubCommand,
+}
+
 impl Options {
-    async fn server(state: State, host: String, port: u32) -> Result<()> {
+    async fn server(
+        mut state: State,
+        host: String,
+        port: u32,
+        username: Option<String>,
+        password: Option<String>,
+    ) -> Result<()> {
+        if let Some(username) = username {
+            if let Some(password) = password {
+                state = state.set_credential(username, password);
+            }
+        }
+
         let app = crate::api::make_app(state.clone());
         let crwaler = crate::crawler::Crawler::new(state);
         let (web, crawl) = app
@@ -217,11 +247,19 @@ impl Options {
         Ok(())
     }
 
-    pub async fn run(self, state: State) -> Result<()> {
-        match self {
-            Options::Feed(cmd) => cmd.run(state).await,
-            Options::Group(cmd) => cmd.run(state).await,
-            Options::Server { host, port } => Self::server(state, host, port).await,
+    pub async fn run(self) -> Result<()> {
+        let pool = crate::model::get_pool(&self.database).unwrap();
+        let state = crate::state::State::new(pool);
+
+        match self.command {
+            SubCommand::Feed(cmd) => cmd.run(state).await,
+            SubCommand::Group(cmd) => cmd.run(state).await,
+            SubCommand::Server {
+                host,
+                port,
+                username,
+                password,
+            } => Self::server(state, host, port, username, password).await,
         }
     }
 }
