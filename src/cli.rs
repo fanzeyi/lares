@@ -44,7 +44,11 @@ impl FeedCommand {
     }
 
     async fn add(state: State, url: String, group: Option<String>) -> Result<()> {
-        let bytes = surf::get(&url).await.unwrap().body_bytes().await.unwrap();
+        let bytes = surf::get(&url)
+            .await
+            .map_err(|err| anyhow!("unable to fetch {}: {:?}", &url, err))?
+            .body_bytes()
+            .await?;
         let channel = rss::Channel::read_from(&bytes[..])?;
         let feed = Feed::new(channel.title().to_owned(), url, channel.link().to_owned());
         let feed = {
@@ -242,13 +246,12 @@ impl Options {
             .listen(format!("{}:{}", host, port))
             .join(crwaler.runloop())
             .await;
-        web.unwrap();
-        crawl.unwrap();
+        (web?, crawl?);
         Ok(())
     }
 
     pub async fn run(self) -> Result<()> {
-        let pool = crate::model::get_pool(&self.database).unwrap();
+        let pool = crate::model::get_pool(&self.database)?;
         let state = crate::state::State::new(pool);
 
         match self.command {

@@ -2,7 +2,10 @@ use thiserror::Error;
 
 macro_rules! error {
     ($code: expr, $($t:tt)*) => {
-        ::tide::Error::from_str(($code as u16).try_into().unwrap(), format!($($t)*));
+        ::tide::Error::from_str(
+            ($code as u16).try_into().unwrap_or(::tide::StatusCode::BadRequest),
+            format!($($t)*)
+        );
     };
 }
 
