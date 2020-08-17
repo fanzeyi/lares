@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{params, Connection, Row, NO_PARAMS};
+use rusqlite::{params, Connection, OptionalExtension, Row, NO_PARAMS};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
@@ -180,6 +180,16 @@ impl Feed {
         Ok(())
     }
 
+    pub fn get_by_url(conn: &Connection, url: &str) -> Result<Option<Self>> {
+        Ok(conn
+            .query_row(
+                "SELECT * FROM `feed` WHERE `url` = ?1",
+                params![url],
+                Self::from_row,
+            )
+            .optional()?)
+    }
+
     pub fn insert(mut self, conn: &Connection) -> Result<Self> {
         self.id = conn
             .prepare("INSERT INTO `feed` (title, url, site_url, is_spark, last_updated) VALUES (?1, ?2, ?3, ?4, ?5)")?
@@ -203,37 +213,40 @@ impl Feed {
                 .collect::<HashSet<String>>()
         };
         let content = surf::get(&self.url).await?.body_bytes().await?;
-        let channel = rss::Channel::read_from(&content[..])?;
+        let feed = feed_rs::parser::parse(&content[..])?;
 
         let mut items = Vec::new();
-        for item in channel.items() {
-            if let Some(link) = item.link() {
-                if exist_urls.contains(link) {
+        for item in feed.entries {
+            if let Some(link) = item.links.first() {
+                if exist_urls.contains(&link.href) {
                     break;
                 }
 
-                let created = if let Some(pub_date) = item.pub_date() {
-                    if let Ok(created) = DateTime::parse_from_rfc2822(pub_date) {
-                        created.with_timezone(&Utc)
-                    } else {
-                        continue;
-                    }
+                let created = if let Some(published) = item.published {
+                    published
                 } else {
                     continue;
                 };
 
+                let author = item
+                    .authors
+                    .iter()
+                    .map(|a| a.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let url = link.href.clone();
+
                 items.push(Item {
                     id: 0,
                     feed_id: self.id,
-                    title: item.title().unwrap_or_default().to_owned(),
-                    author: item.author().unwrap_or_default().to_owned(),
+                    title: item.title.map(|t| t.content).unwrap_or_default(),
+                    author,
                     html: item
-                        .content()
-                        .and_then(|s| if s.is_empty() { None } else { Some(s) })
-                        .or_else(|| item.description())
-                        .unwrap_or_default()
-                        .to_owned(),
-                    url: link.to_owned(),
+                        .content
+                        .and_then(|c| c.body)
+                        .or(item.summary.map(|c| c.content))
+                        .unwrap_or_default(),
+                    url,
                     is_saved: false,
                     is_read: false,
                     created_on_time: created,
@@ -350,6 +363,14 @@ impl FeedGroup {
             .collect::<Result<Vec<_>, _>>()?;
 
         Self::fold_group(indices)
+    }
+
+    pub fn get_by_feed(conn: &Connection, feed_id: u32) -> Result<(u32, u32)> {
+        Ok(conn.query_row(
+            "SELECT group_id, feed_id FROM `feed_group` WHERE `feed_id` = ?1",
+            params![feed_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?)
     }
 
     pub fn get_by_group(conn: &Connection, group_id: u32) -> Result<Self> {

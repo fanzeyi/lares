@@ -44,13 +44,36 @@ impl FeedCommand {
     }
 
     async fn add(state: State, url: String, group: Option<String>) -> Result<()> {
+        let feed = {
+            let conn = state.db.get()?;
+            Feed::get_by_url(&conn, &url)?
+        };
+
+        if feed.is_some() {
+            return Err(anyhow!("Feed `{}` already exists!", url));
+        }
+
         let bytes = surf::get(&url)
             .await
             .map_err(|err| anyhow!("unable to fetch {}: {:?}", &url, err))?
             .body_bytes()
             .await?;
-        let channel = rss::Channel::read_from(&bytes[..])?;
-        let feed = Feed::new(channel.title().to_owned(), url, channel.link().to_owned());
+        let raw_feed = feed_rs::parser::parse(&bytes[..])?;
+        let feed = Feed::new(
+            raw_feed
+                .title
+                .map(|t| t.content)
+                .ok_or_else(|| anyhow!("Feed doesn't have a title"))?,
+            url.clone(),
+            raw_feed
+                .links
+                .iter()
+                .map(|l| l.href.as_str())
+                .filter(|&link| link != url)
+                .next()
+                .map(|l| l.to_string())
+                .unwrap_or(url),
+        );
         let feed = {
             let conn = state.db.get()?;
             feed.insert(&conn)?
@@ -149,6 +172,7 @@ impl GroupCommand {
             .with_context(|| anyhow!("Unable to find group '{}'", group))?;
         let feed = Feed::get(&conn, feed_id)
             .with_context(|| anyhow!("Unable to find feed with id = {}", feed_id))?;
+        // if let Ok((_, group_id)) = FeedGroup::get_by_feed(&conn, feed_id) {}
         group.add_feed(&conn, feed)?;
         Ok(())
     }
@@ -157,11 +181,12 @@ impl GroupCommand {
         let conn = state.db.get()?;
         let group = Group::get_by_name(&conn, &group)
             .with_context(|| anyhow!("Unable to find group '{}'", group))?;
-        let feed_groups = FeedGroup::get_by_group(&conn, group.id)?;
-        if feed_groups.feed_ids.len() != 0 {
-            println!("Warning: there are still feeds belong to this group");
+        if let Ok(feed_groups) = FeedGroup::get_by_group(&conn, group.id) {
+            if feed_groups.feed_ids.len() != 0 {
+                println!("Warning: there are still feeds belong to this group");
+            }
+            feed_groups.delete(&conn)?;
         }
-        feed_groups.delete(&conn)?;
         let group = group.delete(&conn)?;
         println!("Group {} deleted", group.title);
         Ok(())

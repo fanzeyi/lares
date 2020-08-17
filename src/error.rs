@@ -37,8 +37,8 @@ pub enum Error {
     #[error("IO error")]
     IOError(#[from] std::io::Error),
 
-    #[error("RSS error")]
-    RSSError(#[from] rss::Error),
+    #[error("Feed error")]
+    FeedError(#[from] feed_rs::parser::ParseFeedError),
 
     #[error("{}", _0)]
     Message(String),
