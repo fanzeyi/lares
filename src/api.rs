@@ -248,10 +248,8 @@ pub fn make_app(state: State) -> tide::Server<State> {
             } else if query.contains_key("saved_item_ids") {
                 handle_saved_item_ids(request)?.into()
             } else if let Ok(form) = form {
-                handle_write_form(request, dbg!(form))?.into()
+                handle_write_form(request, form)?.into()
             } else {
-                dbg!(request.url());
-                let _ = dbg!(request.body_string().await);
                 handle_ok(request)?.into()
             };
 

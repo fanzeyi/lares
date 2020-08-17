@@ -197,9 +197,13 @@ impl Feed {
         Ok(self)
     }
 
-    pub fn items(&self, conn: &Connection) -> Result<Vec<Item>> {
+    pub fn items(&self, conn: &Connection, limit: Option<u32>) -> Result<Vec<Item>> {
+        let mut stmt = "SELECT * FROM `item` WHERE `feed_id` = ?1 ORDER BY `id` DESC".to_owned();
+        if let Some(limit) = limit {
+            stmt.push_str(&format!(" LIMIT {}", limit));
+        }
         Ok(conn
-            .prepare("SELECT * FROM `item` WHERE `feed_id` = ?1 ORDER BY `id` DESC LIMIT 10")?
+            .prepare(&stmt)?
             .query_map(params![self.id], Item::from_row)?
             .collect::<Result<Vec<_>, _>>()?)
     }
@@ -207,7 +211,7 @@ impl Feed {
     pub async fn crawl(mut self, state: crate::state::State) -> Result<Self> {
         let exist_urls = {
             let conn = state.db.get()?;
-            self.items(&conn)?
+            self.items(&conn, None)?
                 .into_iter()
                 .map(|item| item.url)
                 .collect::<HashSet<String>>()
@@ -216,10 +220,10 @@ impl Feed {
         let feed = feed_rs::parser::parse(&content[..])?;
 
         let mut items = Vec::new();
-        for item in feed.entries {
+        for item in feed.entries.into_iter().rev() {
             if let Some(link) = item.links.first() {
                 if exist_urls.contains(&link.href) {
-                    break;
+                    continue;
                 }
 
                 let created = if let Some(published) = item.published {
@@ -526,7 +530,7 @@ impl Item {
             stmt.push_str(&format!(" OFFSET {}", offset));
         }
         Ok(conn
-            .prepare(dbg!(&stmt))?
+            .prepare(&stmt)?
             .query_map(NO_PARAMS, Self::from_row)?
             .collect::<Result<_, _>>()?)
     }
