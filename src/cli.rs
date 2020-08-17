@@ -244,7 +244,12 @@ pub enum SubCommand {
 #[derive(StructOpt, Debug)]
 #[structopt(name = "lares", about = "Minimal RSS service")]
 pub struct Options {
-    #[structopt(short = "d", long = "database", default_value = "lares.db")]
+    #[structopt(
+        short = "d",
+        long = "database",
+        env = "LARES_DATABASE",
+        default_value = "lares.db"
+    )]
     database: PathBuf,
 
     #[structopt(subcommand)]
