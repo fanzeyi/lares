@@ -216,29 +216,36 @@ impl GroupCommand {
 }
 
 #[derive(Debug, StructOpt)]
+pub struct ServerConfig {
+    #[structopt(short = "H", long = "host", default_value = "127.0.0.1")]
+    /// Specifies server host
+    host: String,
+
+    #[structopt(short = "p", long = "port", default_value = "4000")]
+    /// Specifies alternate port
+    port: u32,
+
+    #[structopt(short = "u", long = "username", requires = "password")]
+    /// Specifies authentication username
+    username: Option<String>,
+
+    #[structopt(short = "P", long = "password", requires = "username")]
+    /// Specifies authentication password
+    password: Option<String>,
+
+    #[structopt(short = "i", long = "interval", default_value = "30")]
+    /// Specifies crawl interval (unit: minutes)
+    interval: u32,
+}
+
+#[derive(Debug, StructOpt)]
 pub enum SubCommand {
     /// Manages feeds
     Feed(FeedCommand),
     /// Manages group
     Group(GroupCommand),
     /// Starts web server
-    Server {
-        #[structopt(short = "H", long = "host", default_value = "127.0.0.1")]
-        /// Specifies host of server
-        host: String,
-
-        #[structopt(short = "p", long = "port", default_value = "4000")]
-        /// Specifies port of server
-        port: u32,
-
-        #[structopt(short = "u", long = "username", requires = "password")]
-        /// Specifies username used in authentication
-        username: Option<String>,
-
-        #[structopt(short = "P", long = "password", requires = "username")]
-        /// Specifies password used in authentication
-        password: Option<String>,
-    },
+    Server(ServerConfig),
 }
 
 #[derive(StructOpt, Debug)]
@@ -257,23 +264,18 @@ pub struct Options {
 }
 
 impl Options {
-    async fn server(
-        mut state: State,
-        host: String,
-        port: u32,
-        username: Option<String>,
-        password: Option<String>,
-    ) -> Result<()> {
-        if let Some(username) = username {
-            if let Some(password) = password {
+    async fn server(mut state: State, config: ServerConfig) -> Result<()> {
+        if let Some(username) = config.username {
+            if let Some(password) = config.password {
                 state = state.set_credential(username, password);
             }
         }
 
         let app = crate::api::make_app(state.clone());
-        let crwaler = crate::crawler::Crawler::new(state);
+        let crawl_interval = ((config.interval) * 60) as u64;
+        let crwaler = crate::crawler::Crawler::new(state, crawl_interval);
         let (web, crawl) = app
-            .listen(format!("{}:{}", host, port))
+            .listen(format!("{}:{}", config.host, config.port))
             .join(crwaler.runloop())
             .await;
         (web?, crawl?);
@@ -287,12 +289,7 @@ impl Options {
         match self.command {
             SubCommand::Feed(cmd) => cmd.run(state).await,
             SubCommand::Group(cmd) => cmd.run(state).await,
-            SubCommand::Server {
-                host,
-                port,
-                username,
-                password,
-            } => Self::server(state, host, port, username, password).await,
+            SubCommand::Server(config) => Self::server(state, config).await,
         }
     }
 }

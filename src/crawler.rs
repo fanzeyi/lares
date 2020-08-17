@@ -9,11 +9,15 @@ use std::time::Duration;
 
 pub struct Crawler {
     state: State,
+    interval_secs: u64,
 }
 
 impl Crawler {
-    pub fn new(state: State) -> Self {
-        Crawler { state }
+    pub fn new(state: State, interval_secs: u64) -> Self {
+        Crawler {
+            state,
+            interval_secs,
+        }
     }
 
     async fn crawl(&self) -> Result<()> {
@@ -31,7 +35,7 @@ impl Crawler {
     }
 
     pub async fn runloop(self) -> Result<()> {
-        let mut interval = stream::interval(Duration::from_secs(300));
+        let mut interval = stream::interval(Duration::from_secs(self.interval_secs));
         while let Some(_) = interval.next().await {
             match self.crawl().await {
                 Ok(_) => (),
