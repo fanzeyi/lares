@@ -369,11 +369,10 @@ impl FeedGroup {
         Self::fold_group(indices)
     }
 
-    pub fn get_by_feed(conn: &Connection, feed_id: u32) -> Result<(u32, u32)> {
-        Ok(conn.query_row(
-            "SELECT group_id, feed_id FROM `feed_group` WHERE `feed_id` = ?1",
+    pub fn delete_by_feed(conn: &Connection, feed_id: u32) -> Result<usize> {
+        Ok(conn.execute(
+            "DELETE FROM `feed_group` WHERE `feed_id` = ?1",
             params![feed_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
         )?)
     }
 
@@ -533,6 +532,10 @@ impl Item {
             .prepare(&stmt)?
             .query_map(NO_PARAMS, Self::from_row)?
             .collect::<Result<_, _>>()?)
+    }
+
+    pub fn delete_by_feed(conn: &Connection, feed_id: u32) -> Result<usize> {
+        Ok(conn.execute("DELETE FROM `item` WHERE `feed_id` = ?1", params![feed_id])?)
     }
 
     pub fn unread(conn: &Connection) -> Result<Vec<u32>> {

@@ -116,3 +116,17 @@ fn test_feed_basic() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_crawl() -> Result<()> {
+    let lares = Lares::new()?;
+    let (addr, _server) = lares.run_fixture_server()?;
+
+    let rust = format!("{}/rust.xml", addr);
+    let _ = lares.cmd()?.args(&["feed", "add", &rust]).output()?;
+
+    // check database before crawling
+
+    lares.cmd()?.args(&["feed", "crawl", "1"]);
+    Ok(())
+}

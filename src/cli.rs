@@ -1,4 +1,4 @@
-use crate::model::{Feed, FeedGroup, Group, ModelExt};
+use crate::model::{Feed, FeedGroup, Group, Item, ModelExt};
 use crate::state::State;
 use anyhow::{anyhow, Context, Result};
 use async_std::prelude::FutureExt;
@@ -94,9 +94,10 @@ impl FeedCommand {
     fn delete(state: State, id: u32) -> Result<()> {
         let conn = state.db.get()?;
         let feed = Feed::get(&conn, id)?;
+        FeedGroup::delete_by_feed(&conn, feed.id)?;
+        Item::delete_by_feed(&conn, feed.id)?;
         let feed = feed.delete(&conn)?;
         println!("Feed deleted!\n{}", feed);
-        // TODO: delete related items
         Ok(())
     }
 

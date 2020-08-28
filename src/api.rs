@@ -193,31 +193,41 @@ struct Auth {
     api_key: String,
 }
 
+macro_rules! unwrap_or_return {
+    ($result: expr, $ret: expr) => {
+        match $result {
+            Some(v) => v,
+            None => return $ret,
+        }
+    };
+}
+
+fn auth_error() -> tide::Result {
+    Ok(json!({
+        "api_version": API_VERSION,
+        "auth": 0,
+    })
+    .into())
+}
+
 fn auth(
     mut request: Request<State>,
     next: tide::Next<'_, State>,
 ) -> Pin<Box<dyn Future<Output = tide::Result> + Send + '_>> {
     Box::pin(async move {
-        if let Some(credential) = request.state().credential.clone() {
-            if let Ok(auth) = request.body_form::<Auth>().await {
-                if auth.api_key == credential {
-                    Ok(next.run(request).await)
-                } else {
-                    Ok(json!({
-                        "api_version": API_VERSION,
-                        "auth": 0,
-                    })
-                    .into())
-                }
-            } else {
-                Ok(json!({
-                    "api_version": API_VERSION,
-                    "auth": 0,
-                })
-                .into())
-            }
-        } else {
+        let credential = unwrap_or_return!(
+            request.state().credential.clone(),
             Ok(next.run(request).await)
+        );
+        let body = unwrap_or_return!(request.take_body().into_string().await.ok(), auth_error());
+        // We need this to avoid taking away body from subsequent processing.
+        request.set_body(body.clone());
+
+        let auth = unwrap_or_return!(serde_urlencoded::from_str::<Auth>(&body).ok(), auth_error());
+        if auth.api_key == credential {
+            Ok(next.run(request).await)
+        } else {
+            auth_error()
         }
     })
 }
