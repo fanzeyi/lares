@@ -4,10 +4,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::future::Future;
 use std::pin::Pin;
-use tide::{
-    log::{self, LevelFilter},
-    Request,
-};
+use tide::{log, Request};
 
 use crate::model::{Feed, FeedGroup, Group, Item, ModelExt};
 use crate::state::State;
@@ -233,8 +230,6 @@ fn auth(
 }
 
 pub fn make_app(state: State) -> tide::Server<State> {
-    tide::log::with_level(LevelFilter::Info);
-
     let mut app = tide::with_state(state);
     app.with(auth)
         .at("/")
