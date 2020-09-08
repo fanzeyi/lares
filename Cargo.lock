@@ -1188,9 +1188,12 @@ dependencies = [
  "async-std",
  "chrono",
  "feed-rs",
+ "femme",
  "futures 0.3.5",
+ "log",
  "md-5",
  "prettytable-rs",
+ "quick-xml",
  "r2d2",
  "r2d2_sqlite",
  "rand",
@@ -1203,6 +1206,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tide",
+ "url",
 ]
 
 [[package]]

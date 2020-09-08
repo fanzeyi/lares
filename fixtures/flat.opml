@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+    <head>
+        <title>Test OPML: Flat</title>
+    </head>
+    <body>
+        <outline xmlUrl="https://example.com/feed1" title="Feed 1 Title" type="rss" text="Feed 1 Text" htmlUrl="http://example.com/site1" />
+        <outline xmlUrl="https://example.com/feed2" title="Feed 2 Title" type="rss" text="Feed 2 Text" htmlUrl="http://example.com/site2" />
+    </body>
+</opml>

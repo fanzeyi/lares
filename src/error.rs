@@ -40,6 +40,19 @@ pub enum Error {
     #[error("Feed error")]
     FeedError(#[from] feed_rs::parser::ParseFeedError),
 
+    #[error("XML error")]
+    XmlError(#[from] quick_xml::Error),
+
+    #[error("XML error at position {position}: {source}")]
+    XmlErrorWithPosition {
+        #[source]
+        source: quick_xml::Error,
+        position: usize,
+    },
+
+    #[error("url parsing error")]
+    UrlError(#[from] url::ParseError),
+
     #[error("{}", _0)]
     Message(String),
 }
@@ -47,6 +60,12 @@ pub enum Error {
 impl Error {
     pub fn message(msg: String) -> Self {
         Error::Message(msg)
+    }
+}
+
+impl From<(quick_xml::Error, usize)> for Error {
+    fn from((source, position): (quick_xml::Error, usize)) -> Self {
+        Error::XmlErrorWithPosition { source, position }
     }
 }
 

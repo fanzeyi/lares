@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+    <head>
+        <title>Test OPML: Missing Metadata</title>
+    </head>
+    <body>
+        <outline text="Group 1 Text" title="Group 1 Title">
+            <outline xmlUrl="__REPLACE__/rust.xml" />
+        </outline>
+    </body>
+</opml>

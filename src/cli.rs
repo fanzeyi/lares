@@ -1,10 +1,15 @@
-use crate::model::{Feed, FeedGroup, Group, Item, ModelExt};
-use crate::state::State;
 use anyhow::{anyhow, Context, Result};
 use async_std::prelude::FutureExt;
+use futures::stream::{self, StreamExt};
+use log::{info, warn};
 use prettytable::{cell, format, row, Table};
 use std::path::PathBuf;
 use structopt::StructOpt;
+
+use crate::model::{Feed, FeedGroup, Group, Item, ModelExt};
+use crate::opml;
+use crate::remote::RemoteFeed;
+use crate::state::State;
 
 #[derive(Debug, StructOpt)]
 pub enum FeedCommand {
@@ -23,6 +28,9 @@ pub enum FeedCommand {
 
     /// Crawls a feed manually
     Crawl { id: u32 },
+
+    /// Imports OPML file
+    Import { file: PathBuf },
 }
 
 impl FeedCommand {
@@ -53,26 +61,14 @@ impl FeedCommand {
             return Err(anyhow!("Feed `{}` already exists!", url));
         }
 
-        let bytes = surf::get(&url)
-            .await
-            .map_err(|err| anyhow!("unable to fetch {}: {:?}", &url, err))?
-            .body_bytes()
-            .await?;
-        let raw_feed = feed_rs::parser::parse(&bytes[..])?;
+        let remote = RemoteFeed::new(&url).await?;
+
         let feed = Feed::new(
-            raw_feed
-                .title
-                .map(|t| t.content)
+            remote
+                .get_title()
                 .ok_or_else(|| anyhow!("Feed doesn't have a title"))?,
             url.clone(),
-            raw_feed
-                .links
-                .iter()
-                .map(|l| l.href.as_str())
-                .filter(|&link| link != url)
-                .next()
-                .map(|l| l.to_string())
-                .unwrap_or(url),
+            remote.get_site_url().unwrap_or(url),
         );
         let feed = {
             let conn = state.db.get()?;
@@ -111,12 +107,81 @@ impl FeedCommand {
         Ok(())
     }
 
+    async fn import(state: State, file: PathBuf) -> Result<()> {
+        let imports = opml::from_file(&file)?;
+
+        let imports: Vec<_> = stream::iter(imports)
+            .then(|(group, feeds)| async move {
+                // normalize feeds
+                let feeds = stream::iter(feeds)
+                    .filter_map(|mut feed| async move {
+                        if let Err(e) = feed.update().await {
+                            warn!("failed to update feed {}: {:?}", feed, e);
+                        }
+
+                        if let Err(e) = feed.validate() {
+                            warn!("invalid feed ({}): {:?}", feed, e);
+                            None
+                        } else {
+                            Some(feed)
+                        }
+                    })
+                    .map(Feed::from)
+                    .collect::<Vec<Feed>>()
+                    .await;
+
+                (group, feeds)
+            })
+            .collect()
+            .await;
+
+        let conn = state.db.get()?;
+        for (group, feeds) in imports.into_iter() {
+            let group = group.and_then(|title| {
+                if let Ok(group) = Group::get_by_name(&conn, &title) {
+                    Some(group)
+                } else {
+                    let group = Group::new(title.clone());
+                    match group.insert(&conn) {
+                        Ok(group) => Some(group),
+                        Err(e) => {
+                            warn!("unable to create group {}: {:?}", title, e);
+                            None
+                        }
+                    }
+                }
+            });
+
+            for feed in feeds {
+                let feed = match feed.insert(&conn) {
+                    Err(e) => {
+                        warn!("unable to create feed: {:?}", e);
+                        continue;
+                    }
+                    Ok(feed) => feed,
+                };
+
+                if let Some(group) = group.as_ref() {
+                    if let Err(e) = group.add_feed(&conn, feed) {
+                        warn!("unable to add feed to group {:?}: {:?}", group, e);
+                        continue;
+                    }
+                }
+            }
+        }
+
+        info!("import completed.");
+
+        Ok(())
+    }
+
     async fn run(self, state: State) -> Result<()> {
         match self {
             Self::List => Self::list(state),
             Self::Add { url, group } => Self::add(state, url, group).await,
             Self::Delete { id } => Self::delete(state, id),
             Self::Crawl { id } => Self::crawl(state, id).await,
+            Self::Import { file } => Self::import(state, file).await,
         }
     }
 }
@@ -260,6 +325,9 @@ pub struct Options {
     )]
     database: PathBuf,
 
+    #[structopt(long)]
+    debug: bool,
+
     #[structopt(subcommand)]
     command: SubCommand,
 }
@@ -286,6 +354,12 @@ impl Options {
     pub async fn run(self) -> Result<()> {
         let pool = crate::model::get_pool(&self.database)?;
         let state = crate::state::State::new(pool);
+
+        if self.debug {
+            femme::with_level(log::LevelFilter::Debug);
+        } else {
+            femme::with_level(log::LevelFilter::Info);
+        }
 
         match self.command {
             SubCommand::Feed(cmd) => cmd.run(state).await,

@@ -6,7 +6,9 @@ mod error;
 mod api;
 mod cli;
 mod crawler;
-mod model;
+pub mod model;
+mod opml;
+mod remote;
 mod state;
 mod utils;
 

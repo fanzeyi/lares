@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+    <head>
+        <title>Test OPML: Normal</title>
+    </head>
+    <body>
+        <outline text="Group 1 Text" title="Group 1 Title">
+            <outline xmlUrl="https://example.com/feed1" title="Feed 1 Title" type="rss" text="Feed 1 Text" htmlUrl="http://example.com/site1" />
+            <outline xmlUrl="https://example.com/feed2" type="rss" text="Feed 2 Text" htmlUrl="http://example.com/site2" />
+        </outline>
+        <outline text="Group 2 Text">
+            <outline xmlUrl="https://example.com/feed3" title="Feed 3 Title" type="rss" htmlUrl="http://example.com/site3" />
+            <outline xmlUrl="https://example.com/feed4" text="Feed 4 Text" htmlUrl="http://example.com/site4" />
+        </outline>
+    </body>
+</opml>
