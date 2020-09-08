@@ -93,11 +93,6 @@ impl From<ImportedFeed> for Feed {
 
 type ImportResult = Result<Vec<(Option<String>, Vec<ImportedFeed>)>>;
 
-pub fn from_str(input: &str) -> ImportResult {
-    let reader = Reader::from_str(input);
-    from_reader(reader)
-}
-
 pub fn from_file(path: &Path) -> ImportResult {
     let reader = Reader::from_file(&path)?;
     from_reader(reader)
