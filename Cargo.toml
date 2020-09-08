@@ -35,6 +35,7 @@ quick-xml = "0.18.1"
 log = "0.4.11"
 femme = "2.1.0"
 url = "2.1.1"
+either = "1.5.3"
 
 [dev-dependencies]
 rand = "0.7"

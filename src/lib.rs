@@ -6,6 +6,7 @@ mod error;
 mod api;
 mod cli;
 mod crawler;
+mod find;
 pub mod model;
 mod opml;
 mod remote;

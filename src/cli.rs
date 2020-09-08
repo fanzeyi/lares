@@ -1,8 +1,10 @@
 use anyhow::{anyhow, Context, Result};
 use async_std::prelude::FutureExt;
+use either::Either;
 use futures::stream::{self, StreamExt};
 use log::{info, warn};
 use prettytable::{cell, format, row, Table};
+use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -51,6 +53,74 @@ impl FeedCommand {
         Ok(())
     }
 
+    async fn select_remotes(state: &State, candidates: Vec<String>) -> Result<RemoteFeed> {
+        if candidates.is_empty() {
+            return Err(anyhow!(
+                "Supplied URL is not a feed, and we can't find any potential candidate in the page."
+            ));
+        }
+
+        let length = candidates.len();
+        if length == 1 {
+            let url = candidates.first().unwrap();
+            log::info!(
+                "Supplied URL is not a feed, but we found a potential candidate: {}",
+                url
+            );
+            return Ok(RemoteFeed::new(url).await?);
+        }
+
+        println!(
+            "Supplied URL is not a feed, but we found {} potential candidates. Please select one:",
+            length
+        );
+
+        for (idx, url) in candidates.iter().enumerate() {
+            println!("{}) {}", idx, url);
+        }
+
+        let stdin = io::stdin();
+        loop {
+            print!("select (0-{}, c to cancel): ", length - 1);
+            io::stdout().flush()?;
+
+            let mut selection = String::new();
+            stdin.lock().read_line(&mut selection)?;
+
+            let selection = selection.trim();
+            if selection == "c" {
+                break Err(anyhow!("No selection was made."));
+            }
+
+            match selection.parse::<usize>() {
+                Ok(select) if select < length => {
+                    let url = candidates.get(select).unwrap();
+
+                    let feed = {
+                        let conn = state.db.get()?;
+                        Feed::get_by_url(&conn, &url)?
+                    };
+
+                    if feed.is_some() {
+                        println!("Error: Invalid selection: selected feed already exists");
+                        continue;
+                    }
+
+                    match RemoteFeed::new(candidates.get(select).unwrap()).await {
+                        Ok(feed) => break Ok(feed),
+                        Err(e) => println!("Error: Selection is not a feed: {}", e),
+                    }
+                }
+                Ok(_) => {
+                    println!("Error: Invalid selection: out of range");
+                }
+                Err(e) => {
+                    println!("Error: Invalid selection: {}", e);
+                }
+            }
+        }
+    }
+
     async fn add(state: State, url: String, group: Option<String>) -> Result<()> {
         let feed = {
             let conn = state.db.get()?;
@@ -61,7 +131,12 @@ impl FeedCommand {
             return Err(anyhow!("Feed `{}` already exists!", url));
         }
 
-        let remote = RemoteFeed::new(&url).await?;
+        let remote = match RemoteFeed::try_new(&url).await? {
+            Either::Left(remote) => remote,
+            Either::Right(candidates) => Self::select_remotes(&state, candidates).await?,
+        };
+
+        let url = remote.get_url().to_owned();
 
         let feed = Feed::new(
             remote

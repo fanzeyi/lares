@@ -1,4 +1,7 @@
+use either::Either;
+
 use crate::error::Result;
+use crate::find::find_rel_alternates;
 
 pub struct RemoteFeed {
     url: String,
@@ -16,6 +19,18 @@ impl RemoteFeed {
         })
     }
 
+    /// Attempts to fetch and parse feed from the given url
+    pub async fn try_new(url: &str) -> Result<Either<Self, Vec<String>>> {
+        let bytes = surf::get(url).await?.body_bytes().await?;
+        match feed_rs::parser::parse(&bytes[..]) {
+            Ok(feed) => Ok(Either::Left(RemoteFeed {
+                url: url.to_owned(),
+                feed,
+            })),
+            Err(_) => Ok(Either::Right(find_rel_alternates(&bytes[..])?)),
+        }
+    }
+
     pub fn get_title(&self) -> Option<String> {
         self.feed.title.as_ref().map(|t| t.content.clone())
     }
@@ -28,5 +43,9 @@ impl RemoteFeed {
             .filter(|&link| link != self.url)
             .next()
             .map(|x| x.to_owned())
+    }
+
+    pub fn get_url(&self) -> &str {
+        &self.url
     }
 }
