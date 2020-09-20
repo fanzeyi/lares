@@ -358,23 +358,43 @@ impl GroupCommand {
 
 #[derive(Debug, StructOpt)]
 pub struct ServerConfig {
-    #[structopt(short = "H", long = "host", default_value = "127.0.0.1")]
+    #[structopt(
+        short = "H",
+        long = "host",
+        default_value = "127.0.0.1",
+        env = "LARES_HOST"
+    )]
     /// Specifies server host
     host: String,
 
-    #[structopt(short = "p", long = "port", default_value = "4000")]
+    #[structopt(short = "p", long = "port", default_value = "4000", env = "LARES_PORT")]
     /// Specifies alternate port
     port: u32,
 
-    #[structopt(short = "u", long = "username", requires = "password")]
+    #[structopt(
+        short = "u",
+        long = "username",
+        requires = "password",
+        env = "LARES_USERNAME"
+    )]
     /// Specifies authentication username
     username: Option<String>,
 
-    #[structopt(short = "P", long = "password", requires = "username")]
+    #[structopt(
+        short = "P",
+        long = "password",
+        requires = "username",
+        env = "LARES_PASSWORD"
+    )]
     /// Specifies authentication password
     password: Option<String>,
 
-    #[structopt(short = "i", long = "interval", default_value = "30")]
+    #[structopt(
+        short = "i",
+        long = "interval",
+        default_value = "30",
+        env = "LARES_INTERVAL"
+    )]
     /// Specifies crawl interval (unit: minutes)
     interval: u32,
 }

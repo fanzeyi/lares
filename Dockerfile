@@ -15,11 +15,8 @@ RUN touch src/lib.rs && cargo install --offline --path .
 
 FROM alpine:latest
 
-ENV LARES_HOST="0.0.0.0" \
-	LARES_PORT=4000 \
-	LARES_USERNAME=lares \
-	LARES_PASSWORD=lares \
-	LARES_INTERVAL=30
+ENV LARES_HOST="0.0.0.0"
+ENV LARES_PORT="4000"
 
 RUN apk update && apk add --no-cache openssl ca-certificates libcurl libgcc
 COPY --from=builder /usr/local/cargo/bin/lares /usr/local/bin/lares
@@ -27,4 +24,4 @@ COPY --from=builder /usr/src/binary/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 EXPOSE $LARES_PORT/tcp
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["server_default"]
+CMD ["server"]
