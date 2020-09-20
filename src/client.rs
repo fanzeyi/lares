@@ -1,4 +1,5 @@
 use thiserror::Error;
+use url::{ParseError, Url};
 
 use crate::error::Result;
 
@@ -30,7 +31,7 @@ pub enum HttpClientError {
 
 impl HttpClient {
     pub async fn get(url: &str) -> Result<Vec<u8>> {
-        let mut url = url.to_owned();
+        let mut url = Url::parse(url)?;
         let mut redirection_count = 0;
 
         loop {
@@ -56,7 +57,13 @@ impl HttpClient {
                 redirection_count += 1;
 
                 if let Some(location) = response.header("Location") {
-                    url = location.to_owned();
+                    match Url::parse(location) {
+                        Ok(parsed) => url = parsed,
+                        Err(e) if e == ParseError::RelativeUrlWithoutBase => {
+                            url.set_path(location);
+                        }
+                        Err(e) => break Err(e.into()),
+                    }
                 } else {
                     break Err(HttpClientError::MissingLocationHeader.into());
                 }
