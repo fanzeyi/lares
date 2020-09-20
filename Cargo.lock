@@ -1197,6 +1197,7 @@ dependencies = [
  "feed-rs",
  "femme",
  "futures 0.3.5",
+ "http",
  "log",
  "md-5",
  "prettytable-rs",

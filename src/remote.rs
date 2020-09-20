@@ -1,5 +1,6 @@
 use either::Either;
 
+use crate::client::HttpClient;
 use crate::error::Result;
 use crate::find::find_rel_alternates;
 
@@ -10,7 +11,7 @@ pub struct RemoteFeed {
 
 impl RemoteFeed {
     pub async fn new(url: &str) -> Result<Self> {
-        let bytes = surf::get(url).await?.body_bytes().await?;
+        let bytes = HttpClient::get(url).await?;
         let feed = feed_rs::parser::parse(&bytes[..])?;
 
         Ok(RemoteFeed {
@@ -21,7 +22,7 @@ impl RemoteFeed {
 
     /// Attempts to fetch and parse feed from the given url
     pub async fn try_new(url: &str) -> Result<Either<Self, Vec<String>>> {
-        let bytes = surf::get(url).await?.body_bytes().await?;
+        let bytes = HttpClient::get(url).await?;
         match feed_rs::parser::parse(&bytes[..]) {
             Ok(feed) => Ok(Either::Left(RemoteFeed {
                 url: url.to_owned(),

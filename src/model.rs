@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::rc::Rc;
 
+use crate::client::HttpClient;
 use crate::error::{Error, Result};
 
 pub trait Model: Sized {
@@ -216,7 +217,7 @@ impl Feed {
                 .map(|item| item.url)
                 .collect::<HashSet<String>>()
         };
-        let content = surf::get(&self.url).await?.body_bytes().await?;
+        let content = HttpClient::get(&self.url).await?;
         let feed = feed_rs::parser::parse(&content[..])?;
 
         let mut items = Vec::new();

@@ -31,8 +31,8 @@ pub enum Error {
     #[error("Database pool error")]
     R2D2Error(#[from] r2d2::Error),
 
-    #[error("HTTP error")]
-    SurfError(#[from] surf::Exception),
+    #[error("HTTP Error")]
+    HttpError(#[from] crate::client::HttpClientError),
 
     #[error("IO error")]
     IOError(#[from] std::io::Error),

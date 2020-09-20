@@ -5,6 +5,7 @@ mod error;
 
 mod api;
 mod cli;
+mod client;
 mod crawler;
 mod find;
 pub mod model;
