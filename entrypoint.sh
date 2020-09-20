@@ -1,4 +1,8 @@
 #!/bin/sh
 set -e
 
-/usr/local/bin/lares "$@"
+trap 'echo "terminating..." && exit 0' INT TERM
+
+/usr/local/bin/lares "$@" &
+
+wait
