@@ -3,7 +3,13 @@ use thiserror::Error;
 use crate::error::Result;
 
 const MAXIMUM_REDIRECTION: u8 = 5;
-const USER_AGENT: &'static str = "LaresBot/0.2 (+https://github.com/fanzeyi/lares)";
+
+/// User-Agent string (`LaresBot/<version> (+https://github.com/fanzeyi/lares)`)
+const USER_AGENT: &'static str = concat!(
+    "LaresBot/",
+    env!("CARGO_PKG_VERSION"),
+    " (+https://github.com/fanzeyi/lares)"
+);
 
 pub struct HttpClient;
 
