@@ -37,18 +37,19 @@ manageable via the command line interface.
 
 ```
 $ lares --help
-lares 0.1.1
+lares 0.2.1
 Minimal RSS service
 
 USAGE:
-    lares [OPTIONS] <SUBCOMMAND>
+    lares [FLAGS] [OPTIONS] <SUBCOMMAND>
 
 FLAGS:
+        --debug
     -h, --help       Prints help information
     -V, --version    Prints version information
 
 OPTIONS:
-    -d, --database <database>     [default: lares.db]
+    -d, --database <database>     [env: LARES_DATABASE=]  [default: lares.db]
 
 SUBCOMMANDS:
     feed      Manages feeds
@@ -61,7 +62,7 @@ Or, to start a server:
 
 ```
 $ lares server --help
-lares-server 0.1.1
+lares-server 0.2.1
 Starts web server
 
 USAGE:
@@ -72,10 +73,11 @@ FLAGS:
     -V, --version    Prints version information
 
 OPTIONS:
-    -H, --host <host>            Specifies host of server [default: 127.0.0.1]
-    -P, --password <password>    Specifies password used in authentication
-    -p, --port <port>            Specifies port of server [default: 4000]
-    -u, --username <username>    Specifies username used in authentication
+    -H, --host <host>            Specifies server host [env: LARES_HOST=]  [default: 127.0.0.1]
+    -i, --interval <interval>    Specifies crawl interval (unit: minutes) [env: LARES_INTERVAL=]  [default: 30]
+    -P, --password <password>    Specifies authentication password [env: LARES_PASSWORD=]
+    -p, --port <port>            Specifies alternate port [env: LARES_PORT=]  [default: 4000]
+    -u, --username <username>    Specifies authentication username [env: LARES_USERNAME=]
 ```
 
 To start a lares server listens to `127.0.0.1:4000` that only accepts
@@ -85,6 +87,37 @@ at `/var/lares.db`, run:
 ```
 $ lares --database /var/lares.db server --host 127.0.0.1 --port 4000 \
   --username lares --password apassword
+```
+
+## Docker Compose
+
+If you'd like to start a Lares host with Docker Compose, you may start with
+this configuration:
+
+```yaml
+version: '3'
+services:
+  lares:
+    image: fanzeyi/lares:latest
+    ports:
+      - "127.0.0.1:4000:4000"
+    restart: always
+    # Uncomment this to persist the storage on the host.
+    # volumes:
+    #  - ./run/lares:/var/lares
+    environment:
+      LARES_DATABASE: /var/lares/lares.db
+      LARES_HOST: 0.0.0.0
+      LARES_USERNAME: username
+      LARES_PASSWORD: password
+```
+
+Then you can use `docker-compose exec lares lares` to access Lares's command
+line interface inside the container. For example, if you want to add a feed,
+use:
+
+```
+docker-compose exec lares lares feed add http://example.com/
 ```
 
 ## License
