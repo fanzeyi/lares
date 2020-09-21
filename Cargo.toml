@@ -1,6 +1,6 @@
 [package]
 name = "lares"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Zeyi Fan <cargo@zeyi.fan>"]
 edition = "2018"
 description = "Simple RSS Reader Service (Fever API backend)"
