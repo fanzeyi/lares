@@ -122,9 +122,13 @@ fn handle_write_form(
             };
 
             match form.r#as {
-                Action::Saved | Action::Unsaved => bail!(400, "invalid as"),
+                Action::Saved | Action::Unsaved => bail!(400, "invalid request"),
                 Action::Read => {
-                    feed.read(form.before);
+                    log::debug!("marking items in feed {} as read", form.id);
+                    {
+                        let conn = request.state().db.get()?;
+                        feed.read(&conn, form.before)?;
+                    }
                     handle_ok(request)
                 }
             }
@@ -144,9 +148,13 @@ fn handle_write_form(
             };
 
             match form.r#as {
-                Action::Saved | Action::Unsaved => bail!(400, "invalid as"),
+                Action::Saved | Action::Unsaved => bail!(400, "invalid request"),
                 Action::Read => {
-                    group.read(form.before);
+                    log::debug!("marking items in group {} as read", form.id);
+                    {
+                        let conn = request.state().db.get()?;
+                        group.read(&conn, form.before)?;
+                    }
                     handle_ok(request)
                 }
             }

@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, OptionalExtension, Row, NO_PARAMS};
 use serde::Serialize;
@@ -119,7 +119,26 @@ impl Group {
         Ok(feed)
     }
 
-    pub fn read(&self, _before: Option<u32>) {}
+    pub fn read(&self, conn: &Connection, before: Option<u32>) -> Result<()> {
+        const BASE_SQL: &'static str = r"
+        UPDATE `item`
+        SET `is_read` = 1
+        WHERE `feed_id` IN (
+            SELECT `feed_id` FROM `feed_group` WHERE `group_id` = ?1
+        )";
+
+        if let Some(before) = before {
+            let before = Utc.timestamp(before as i64, 0);
+            dbg!(conn.execute(
+                &format!("{} AND `created` < ?2", BASE_SQL),
+                params![self.id, before],
+            ))?;
+        } else {
+            conn.execute(BASE_SQL, params![self.id])?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Model for Group {
@@ -273,7 +292,20 @@ impl Feed {
         Ok(self)
     }
 
-    pub fn read(&self, _before: Option<u32>) {}
+    pub fn read(&self, conn: &Connection, before: Option<u32>) -> Result<()> {
+        const BASE_SQL: &'static str = "UPDATE `item` SET `is_read` = 1 WHERE `feed_id` = ?1";
+        if let Some(before) = before {
+            let before = Utc.timestamp(before as i64, 0);
+            conn.execute(
+                &format!("{} AND `created` < ?2", BASE_SQL),
+                params![self.id, before],
+            )?;
+        } else {
+            conn.execute(BASE_SQL, params![self.id])?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Model for Feed {
