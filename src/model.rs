@@ -115,7 +115,7 @@ impl Group {
             "UPDATE `feed` SET `is_spark` = 0 WHERE `id` = ?1",
             params![feed.id],
         )?;
-        feed.is_spark = false;
+        feed.is_spark = 0;
         Ok(feed)
     }
 
@@ -166,7 +166,7 @@ pub struct Feed {
     pub title: String,
     pub url: String,
     pub site_url: String,
-    pub is_spark: bool,
+    pub is_spark: u8,
     #[serde(serialize_with = "crate::utils::serialize_timestamp")]
     pub last_updated_on_time: DateTime<Utc>,
 }
@@ -178,7 +178,7 @@ impl Feed {
             title,
             url,
             site_url,
-            is_spark: true,
+            is_spark: 1,
             last_updated_on_time: Utc::now(),
         }
     }
@@ -271,8 +271,8 @@ impl Feed {
                         .or(item.summary.map(|c| c.content))
                         .unwrap_or_default(),
                     url,
-                    is_saved: false,
-                    is_read: false,
+                    is_saved: 0,
+                    is_read: 0,
                     created_on_time: created,
                 });
             }
@@ -501,8 +501,8 @@ pub struct Item {
     pub author: String,
     pub html: String,
     pub url: String,
-    pub is_saved: bool,
-    pub is_read: bool,
+    pub is_saved: u8,
+    pub is_read: u8,
     #[serde(serialize_with = "crate::utils::serialize_timestamp")]
     pub created_on_time: DateTime<Utc>,
 }
@@ -590,7 +590,7 @@ impl Item {
             "UPDATE `item` SET `is_read` = 1 WHERE `id` = ?1",
             params![self.id],
         )?;
-        self.is_read = true;
+        self.is_read = 1;
         Ok(self)
     }
 
@@ -599,7 +599,7 @@ impl Item {
             "UPDATE `item` SET `is_saved` = 1 WHERE `id` = ?1",
             params![self.id],
         )?;
-        self.is_saved = true;
+        self.is_saved = 1;
         Ok(self)
     }
 
@@ -608,7 +608,7 @@ impl Item {
             "UPDATE `item` SET `is_saved` = 0 WHERE `id` = ?1",
             params![self.id],
         )?;
-        self.is_saved = false;
+        self.is_saved = 0;
         Ok(self)
     }
 }
@@ -686,7 +686,7 @@ mod test {
         let group = make_test_group(1).insert(&conn).unwrap();
         let feed1 = make_test_feed(1).insert(&conn).unwrap();
         let feed2 = make_test_feed(2).insert(&conn).unwrap();
-        assert!(feed2.is_spark);
+        assert_eq!(feed2.is_spark, 1);
 
         let _feed1 = group.add_feed(&conn, feed1).unwrap();
         let feed2 = group.add_feed(&conn, feed2).unwrap();
@@ -701,7 +701,7 @@ mod test {
             .filter(|x| x.id == feed2.id)
             .next()
             .unwrap();
-        assert!(!feed2_new.is_spark);
+        assert_eq!(feed2_new.is_spark, 0);
         Ok(())
     }
 
@@ -734,6 +734,6 @@ mod test {
         first.delete(&conn).unwrap();
 
         let feed = Feed::get(&conn, feed_id).unwrap();
-        assert!(feed.is_spark);
+        assert_eq!(feed.is_spark, 1);
     }
 }
